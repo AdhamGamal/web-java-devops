@@ -1,4 +1,5 @@
-package com.amg;
+package com.amg.web;
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
