@@ -2,6 +2,15 @@
 
 This repository contains a Java-based web application built using Maven. The application is structured to enable efficient development and deployment using DevOps practices. Below is a detailed overview of the project, its structure, and how to set it up as a DevOps developer.
 
+---
+
+## Images
+|Root|Servlet|
+|---|---|
+|<img width="427" alt="image" src="https://github.com/user-attachments/assets/73da303e-2843-48e2-a81d-46441254a915" />|<img width="306" alt="image" src="https://github.com/user-attachments/assets/58fa8278-598d-4c63-bfb6-ef0c72f11674" />|
+
+---
+
 ## Project Structure
 
 ```
@@ -13,9 +22,10 @@ web-java-devops/
 │   │   └── webapp/          # Web application files (HTML, JSP, etc.)
 │   └── test/                # Test cases
 ├── pom.xml                  # Maven configuration file
+├── Dockerfile               # Dockerfile for containerizing the application
+├── Jenkinsfile              # Jenkins pipeline script
 └── README.md                # Project documentation
 ```
-
 ---
 
 ## Running the Application Locally Using Jetty
@@ -42,7 +52,6 @@ This step ensures the application runs successfully before moving to deployment 
 
 ---
 
-
 ## Objective as a DevOps Developer
 
 The goal is to implement a CI/CD pipeline using Jenkins to automate the following:
@@ -51,77 +60,22 @@ The goal is to implement a CI/CD pipeline using Jenkins to automate the followin
 2. Building the application (WAR file) using Maven.
 3. Building a Docker image for the application.
 4. Pushing the Docker image to Docker Hub.
-5. Deploying the Docker container to a server.
+5. Deploying the Docker container to a remote server.
 
 ---
 
 ## Prerequisites
 
-### 1. Create a Jenkins Container
+### 1. Jenkins Setup with Docker-in-Docker (DinD)
 
-Run the following command to set up a Jenkins container:
+To enable Jenkins to build and manage Docker images, we use the **Docker-in-Docker (DinD)** approach as recommended by Jenkins documentation. This allows Jenkins to run Docker commands inside a container without requiring direct access to the host's Docker daemon.
 
-```
-docker run -d \
-  --name jenkins \
-  --privileged \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v jenkins_home:/var/jenkins_home \
-  -v $(which docker):/usr/bin/docker \
-  -p 8080:8080 \
-  -p 50000:50000 \
-  jenkins/jenkins:lts
-```
+Please follow the documentation here: https://www.jenkins.io/doc/book/installing/docker/#on-macos-and-linux
 
-#### Why Use These Volumes and Privileges?
+### 2. Required Credentials
 
-- `--privileged`: Allows Jenkins to access the Docker daemon on the host machine.
-- `-v /var/run/docker.sock:/var/run/docker.sock`: Enables Jenkins to communicate with Docker for building and managing images.
-- `-v $(which docker):/usr/bin/docker`: Provides access to the Docker CLI within the container.
-- `-v jenkins_home:/var/jenkins_home`: Persists Jenkins data, such as configurations and build logs.
-
-### 2. Configure the Jenkins Container
-
-Open the Jenkins container using the following command:
-
-```
-docker exec -u 0 -it jenkins bash
-```
-
-#### Perform the Following Steps Inside the Container:
-
-1. Update permissions for Docker socket:
-
-   ```
-   chmod 666 /var/run/docker.sock
-   ```
-
-   - This allows non-root users (like the `jenkins` user) to access the Docker daemon.
-
-2. Install Maven:
-
-   ```
-   apt-get update && apt-get install -y maven
-   ```
-
-   - Maven is required to build the Java application within the pipeline.
-
-3. Retrieve the Jenkins initial admin password:
-
-   ```
-   cat /var/jenkins_home/secrets/initialAdminPassword
-   ```
-
-   - Use this password to complete the Jenkins setup in your browser at `http://<your_server_ip>:8080`.
-
----
-
-## Setting Up Jenkins
-
-1. Access Jenkins through your browser (`http://<your_server_ip>:8080`) and complete the setup using the initial admin password.
-2. Install suggested plugins.
-3. Create a new pipeline job.
-4. Add Docker Hub credentials in Jenkins (ID: `DockerHub`).
+- **Docker Hub Credentials**: Add your Docker Hub username and password as credentials in Jenkins to push Docker images.
+- **SSH Credentials**: Add SSH credentials (private key) in Jenkins to enable secure deployment to the remote server.
 
 ---
 
@@ -130,39 +84,46 @@ docker exec -u 0 -it jenkins bash
 The pipeline consists of the following steps:
 
 1. **Clone Repository**:
-
    - Fetch the latest code from the GitHub repository.
 
 2. **Build WAR**:
-
    - Use Maven to clean and package the application into a WAR file.
 
 3. **Extract Version**:
-
    - Parse the `pom.xml` file to retrieve the application version.
 
 4. **Build Docker Image**:
-
    - Create a Docker image for the application, tagging it with the retrieved version.
 
 5. **Login to Docker Hub**:
-
    - Authenticate with Docker Hub using credentials stored in Jenkins.
 
 6. **Push Image to Docker Hub**:
-
    - Upload the built Docker image to the Docker Hub repository.
+
+7. **Deploy to Remote Server**:
+   - Connect to the remote server via SSH.
+   - Install Docker on the server if not already installed.
+   - Pull the Docker image from Docker Hub.
+   - Stop and remove any existing containers running the application.
+   - Start a new container with the latest image, mapping the container's port to the server's port.
 
 ---
 
 ## Post-Build Steps
 
-1. Cleaning up cloned project files.
-2. Logout from Docker Hub to ensure security.
-3. Display a success message with the application version if the pipeline completes successfully.
-4. Display a failure message if the pipeline fails at any stage.
+1. Display a success message with the application version if the pipeline completes successfully.
+2. Display a failure message if the pipeline fails at any stage.
 
 ---
 
-Follow these steps to set up and run the pipeline efficiently. For any issues or further enhancements, refer to the Jenkins logs and documentation.
+## Achievements
 
+- Successfully implemented a fully automated CI/CD pipeline using Jenkins.
+- Automated the deployment of the application to a remote server using SSH.
+- Ensured secure handling of credentials (Docker Hub and SSH) within Jenkins.
+- Achieved end-to-end automation from code commit to production deployment.
+
+---
+
+Follow these steps to set up and run the pipeline efficiently. For any issues or further enhancements, please contact me via email at **adhammohamadgamal@gmail.com**.
