@@ -55,12 +55,7 @@ pipeline {
         stage('Step 4: Build Docker Image') { 
             steps {
                 script {
-                    echo 'Building Docker image...'
-                    sh 'rm -f Dockerfile' // Ensure the Dockerfile is clean before writing
-                    writeFile file: 'Dockerfile', text: """
-                    FROM tomcat:latest
-                    COPY target/*.war /usr/local/tomcat/webapps/ROOT.war
-                    """
+                    echo 'Building Docker image using existing Dockerfile...'
                     sh "docker build -t ${DOCKER_IMAGE}:${env.PROJECT_VERSION} ."
                 }
             }
