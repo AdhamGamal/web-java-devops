@@ -2,80 +2,106 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('DockerHub')
-        IMAGE_NAME = "adhamgamal22/simple-web-page"
+        DOCKER_IMAGE = 'adhamgamal22/java-web-app'
+        GIT_REPO = 'https://github.com/AdhamGamal/web-java-devops.git'
+        BRANCH = 'main'
+        DOCKER_HUB_CREDENTIALS = 'dockerhub-credentials'
+        SSH_CREDENTIALS = 'ssh-credentials'
+        DROPLET_IP = '157.230.96.168'
     }
 
     stages {
-        stage('Step 1: Clone Repository') {
+        stage('Step 1: Checkout Code') { 
             steps {
-                git branch: 'main', url: "https://github.com/AdhamGamal/web-java-devops.git"
-                echo 'Git Clone Completed'
+                echo 'Checking out code from GitHub...'
+                git branch: "${BRANCH}", url: "${GIT_REPO}"
             }
         }
-        stage('Step 2: Build WAR') {
-            steps {
-                sh 'mvn clean package'
-                echo 'Project Build Completed'
-            }
-        }
-        stage('Step 3: Extract Version') {
+
+        stage('Step 2: Extract Project Version') { 
             steps {
                 script {
-                    // Extract the app version from pom.xml and sanitize it
-                    env.APP_VERSION = sh(
-                        script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed -r 's/\\x1B\\[[0-9;]*[a-zA-Z]//g'",
-                        returnStdout: true
-                    ).trim()
+                    try {
+                        echo 'Extracting project version...'
+                        env.PROJECT_VERSION = sh(
+                            script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout | sed -r 's/\\x1B\\[[0-9;]*[a-zA-Z]//g'",
+                            returnStdout: true
+                        ).trim()
 
-                    // Validate the version format
-                    if (!env.APP_VERSION.matches("[a-zA-Z0-9._-]+")) {
-                        error "Invalid version format: ${env.APP_VERSION}"
+                        if (!env.PROJECT_VERSION.matches("[a-zA-Z0-9._-]+")) {
+                            error "Invalid version format: ${env.PROJECT_VERSION}"
+                        }
+                        echo "Application Version: ${env.PROJECT_VERSION}"
+                    } catch (Exception e) {
+                        error "Failed to extract version: ${e.message}"
                     }
-
-                    echo "Application Version (sanitized): ${env.APP_VERSION}"
                 }
             }
         }
-        stage('Step 4: Build Docker Image') {
+
+        stage('Step 3: Build WAR') { 
             steps {
                 script {
-                    def version = "${env.IMAGE_NAME}:${env.APP_VERSION}"
-                    sh "docker build -t ${version} ."
-                    echo "Docker Image Built: ${version}"
+                    try {
+                        sh 'mvn clean package'
+                        echo 'Project Build Completed'
+                    } catch (Exception e) {
+                        error "Build failed: ${e.message}"
+                    }
                 }
             }
         }
-        stage('Step 5: Login to DockerHub') {
-            steps {
-                sh "echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin"
-                echo 'Login Completed'
-            }
-        }
-        stage('Step 6: Push Image to Docker Hub') {
+
+        stage('Step 4: Build Docker Image') { 
             steps {
                 script {
-                    def version = "${env.IMAGE_NAME}:${env.APP_VERSION}"
-                    sh "docker push ${version}"
-                    echo 'Push Image Completed'
+                    echo 'Building Docker image...'
+                    sh 'rm -f Dockerfile' // Ensure the Dockerfile is clean before writing
+                    writeFile file: 'Dockerfile', text: """
+                    FROM tomcat:latest
+                    COPY target/*.war /usr/local/tomcat/webapps/ROOT.war
+                    """
+                    sh "docker build -t ${DOCKER_IMAGE}:${env.PROJECT_VERSION} ."
                 }
             }
         }
-    }
 
-    post {
-        always {
-            // Clean up Docker containers, images, and cloned project files
-            echo 'Cleaning up cloned project files...'
-            sh 'rm -rf *'                    // Remove cloned project files (Ensure this is safe in your context)
-            sh 'docker logout'               // Logout from Docker
-            echo 'Cleanup completed'
+        stage('Step 5: Push Docker Image to Docker Hub') { 
+            steps {
+                script {
+                    echo 'Pushing Docker image to Docker Hub...'
+                    withCredentials([usernamePassword(credentialsId: "${DOCKER_HUB_CREDENTIALS}", usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                        sh """
+                        echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin
+                        docker push ${DOCKER_IMAGE}:${env.PROJECT_VERSION}
+                        """
+                    }
+                }
+            }
         }
-        success {
-            echo "Pipeline completed successfully! Image Version: ${env.APP_VERSION}"
-        }
-        failure {
-            echo "Pipeline failed."
+
+        stage('Step 6: SSH to Droplet and Deploy') { 
+            steps {
+                script {
+                    def image_name = "${DOCKER_IMAGE}:${env.PROJECT_VERSION}"
+                    echo 'Connecting to Droplet and deploying...'
+                    sshagent([SSH_CREDENTIALS]) {
+                        sh """
+                            ssh -o StrictHostKeyChecking=no root@${DROPLET_IP} '
+                                if ! command -v docker &> /dev/null; then
+                                    echo "Installing Docker..."
+                                    apt-get update && apt-get install -y docker.io
+                                fi
+                                echo "Pulling Docker image..."
+                                docker pull ${image_name}
+                                echo "Running the container..."
+                                docker stop java-web-app || true && docker rm java-web-app || true
+                                docker run -d --name java-web-app -p 80:8080 ${image_name}
+                            '
+                        """
+                    }
+                }
+            }
         }
     }
 }
